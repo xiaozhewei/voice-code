@@ -39,6 +39,43 @@ function ngrokAuthtokenPresent() {
   return Boolean(process.env.NGROK_AUTHTOKEN && String(process.env.NGROK_AUTHTOKEN).trim());
 }
 
+// --- CLI Help ---
+function showCliHelp() {
+  let pkgVersion = 'unknown';
+  try {
+    /* eslint-disable global-require */
+    const pkg = require('./package.json');
+    pkgVersion = pkg && pkg.version ? pkg.version : pkgVersion;
+    /* eslint-enable global-require */
+  } catch {
+    // ignore
+  }
+
+  console.log(`VoiceCode ${pkgVersion}
+Usage: node server.js [options]
+
+Options:
+  -h, --help        Show this help message
+  -t, --tunnel      Start ngrok tunnel for public access
+  -g, --gemini      Auto-run 'gemini' command on new session
+  -c, --claude      Auto-run 'claude' command on new session
+
+Environment variables:
+  PORT              Override server port (default 3000)
+  NGROK_AUTHTOKEN   Authtoken for ngrok (needed for tunnel)
+
+Examples:
+  node server.js
+  node server.js --tunnel
+  node server.js --gemini
+`);
+}
+
+if (hasArg('--help') || hasArg('-h')) {
+  showCliHelp();
+  process.exit(0);
+}
+
 function killNgrokProcessBestEffort() {
   return new Promise((resolve) => {
     const cmd = process.platform === 'win32'
