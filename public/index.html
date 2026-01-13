@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
+    <title>VoiceCode</title>
+    <!-- Favicon -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cascadia+Code:wght@400;600&family=JetBrains+Mono:wght@400;600&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+    <!-- xterm css is loaded by /cdn-loader.js with CDN fallback -->
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: linear-gradient(135deg, #1a1926 0%, #22212c 50%, #2d2b3d 100%);
+        overflow: hidden;
+        font-family: 'Cascadia Code', 'JetBrains Mono', monospace;
+        /* Prevent pull-to-refresh on mobile */
+        overscroll-behavior: none;
+      }
+
+      /* --- Top Header (Mobile Optimized) --- */
+      #mobile-header {
+        height: 40px;
+        background: #282a36;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 10px;
+        border-bottom: 1px solid #44475a;
+        color: #f8f8f2;
+        user-select: none;
+      }
+      .header-title {
+        font-weight: 600;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #voice-model-status {
+        font-size: 11px !important;
+        opacity: 0.7;
+        margin-left: 4px;
+      }
+      .status-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: #6272a4; /* Connecting */
+      }
+      .status-indicator.connected { background-color: #50fa7b; }
+      .status-indicator.disconnected { background-color: #ff5555; }
+      
+      .header-controls {
+        display: flex;
+        gap: 12px;
+      }
+      .icon-btn {
+        background: none;
+        border: none;
+        color: #f8f8f2;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 4px;
+      }
+      .icon-btn:active { opacity: 0.7; }
+
+      /* --- Terminal Viewport --- */
+      #terminal-container {
+        /* Flex grow to fill space between header and bottom bar */
+        position: absolute;
+        top: 40px;
+        bottom: 44px; /* Space for virtual keyboard */
+        width: 100%;
+        background: #1a1926; /* Fallback */
+        overflow: auto; /* Allow internal scrolling for large synced PTYs */
+        -webkit-overflow-scrolling: touch;
+      }
+      #terminal {
+        padding: 8px;
+        min-width: 100%;
+        min-height: 100%;
+      }
+      /* Custom Scrollbar */
+      .xterm-viewport::-webkit-scrollbar { width: 8px; }
+      .xterm-viewport::-webkit-scrollbar-track { background: #22212c; }
+      .xterm-viewport::-webkit-scrollbar-thumb { background: #6272a4; border-radius: 4px; }
+
+      /* Mobile scroll support */
+      .xterm .xterm-viewport {
+        overscroll-behavior: contain;
+        touch-action: none;
+        overflow-x: auto !important;
+      }
+
+      /* iOS/Safari: prevent the OS text caret from showing for xterm's hidden textarea.
+         This avoids a blinking caret at the bottom of the page while the real terminal cursor is elsewhere. */
+      .xterm-helper-textarea {
+        caret-color: transparent !important;
+        color: transparent !important;
+      }
+
+      /* --- Virtual Keyboard --- */
+      #virtual-keyboard {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 44px; /* Single row */
+        background: #282a36;
+        border-top: 1px solid #44475a;
+        display: flex;
+        z-index: 1000;
+      }
+
+      .vk-scroll-container {
+        flex: 1;
+        overflow-x: auto;
+        display: flex;
+        flex-direction: row;
+        height: 100%;
+        /* Hide scrollbar */
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      .vk-scroll-container::-webkit-scrollbar { display: none; }
+
+      .vk-row {
+        display: flex;
+        align-items: center;
+        height: 100%;
+        padding: 0 4px;
+        white-space: nowrap;
+      }
+
+      .vk-btn {
+        background: #44475a;
+        color: #f8f8f2;
+        border: none;
+        border-radius: 4px;
+        min-width: 44px; /* Mobile touch target */
+        height: 36px;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: bold;
+        margin: 0 2px;
+        cursor: pointer;
+        user-select: none;
+        touch-action: manipulation;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .vk-btn:active { background: #6272a4; }
+      .vk-btn.active { 
+        background: #bd93f9; 
+        color: #282a36;
+        box-shadow: 0 0 4px #bd93f9;
+      }
+
+      .vk-tools-area .vk-btn {
+        font-size: 16px;
+      }
+
+      .vk-spacer {
+        width: 8px;
+      }
+
+      .vk-fixed-right {
+        display: flex;
+        height: 100%;
+        background: #282a36;
+        align-items: center;
+        padding-right: 4px;
+      }
+
+      .vk-btn-fixed {
+        background: #44475a;
+        color: #f8f8f2;
+        border: none;
+        border-radius: 4px;
+        min-width: 44px;
+        height: 36px;
+        font-family: inherit;
+        font-size: 18px;
+        margin: 0 2px;
+        cursor: pointer;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        touch-action: none;
+      }
+      .vk-btn-fixed:active { background: #6272a4; }
+      
+      .vk-btn-wide {
+        width: 60px;
+      }
+
+      #ptt-btn { 
+        background: #6272a4; 
+        touch-action: none; /* Prevent system touch behaviors */
+        user-select: none;  /* Prevent text selection/magnifier */
+        -webkit-user-select: none;
+      }
+      #ptt-btn:active { background: #ff5555; }
+      #vk-enter { background: #50fa7b; color: #282a36; }
+      #vk-enter:active { background: #34af5a; }
+
+      /* --- Quick Actions Drawer --- */
+      #quick-actions {
+        position: fixed;
+        bottom: 44px; /* Above virtual keyboard */
+        left: 0;
+        width: 100%;
+        background: rgba(40, 42, 54, 0.98);
+        backdrop-filter: blur(10px);
+        border-top: 1px solid #6272a4;
+        padding: 4px 8px; /* Thinner padding */
+        transform: translateY(100%);
+        transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        z-index: 999;
+        
+        /* Single row scrollable layout */
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 8px; /* Smaller gap */
+        
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+        
+        visibility: hidden;
+
+        /* Hide scrollbar for cleaner look */
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      #quick-actions::-webkit-scrollbar {
+        display: none;
+      }
+
+      #quick-actions.visible {
+        transform: translateY(0);
+        visibility: visible;
+      }
+      .qa-btn {
+        background: #6272a4;
+        color: white;
+        border: none;
+        padding: 6px 14px; /* Thinner button */
+        border-radius: 6px;
+        font-size: 15px; /* Balanced font size */
+        font-weight: 500;
+        cursor: pointer;
+        
+        /* Prevent shrinking/wrapping */
+        flex: 0 0 auto;
+        min-width: auto;
+        max-width: 240px;
+        
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        transition: background 0.1s, transform 0.1s;
+      }
+      .qa-btn:active { 
+        background: #50fa7b; 
+        color: #282a36;
+        transform: scale(0.96);
+      }
+
+      .qa-btn.qa-btn-icon {
+        background: #44475a;
+        padding: 6px 10px;
+        min-width: 44px;
+        max-width: 44px;
+        justify-content: center;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .qa-btn.qa-btn-icon:active {
+        background: #bd93f9;
+        color: #282a36;
+      }
+
+      /* --- Settings Modal --- */
+      #settings-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 2000;
+        justify-content: center;
+        align-items: center;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+      #settings-modal.visible {
+        display: flex !important;
+        opacity: 1 !important;
+      }
+      .modal-content {
+        background: #282a36;
+        padding: 24px;
+        border-radius: 12px;
+        border: 1px solid #44475a;
+        width: 320px;
+        color: #f8f8f2;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        transform: scale(0.95);
+        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+      #settings-modal.visible .modal-content {
+        transform: scale(1);
+      }
+      .modal-header {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #44475a;
+        padding-bottom: 12px;
+      }
+      .close-icon {
+        background: none;
+        border: none;
+        color: #6272a4;
+        font-size: 24px;
+        cursor: pointer;
+        padding: 0;
+        line-height: 1;
+      }
+      .close-icon:hover { color: #f8f8f2; }
+      
+      .form-group { margin-bottom: 20px; }
+      .form-group label { 
+        display: block; 
+        margin-bottom: 8px; 
+        color: #bd93f9; 
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .form-group select {
+        width: 100%;
+        padding: 12px;
+        background: #1a1926;
+        border: 1px solid #6272a4;
+        color: #f8f8f2;
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 14px;
+        appearance: none; /* Custom arrow would be nice, but keeping simple */
+        outline: none;
+      }
+      .form-group select:focus {
+        border-color: #bd93f9;
+        box-shadow: 0 0 0 2px rgba(189, 147, 249, 0.2);
+      }
+
+      /* --- Quick Actions Manager in Settings --- */
+      .qa-manager {
+        margin-top: 20px;
+        border-top: 1px solid #44475a;
+        padding-top: 20px;
+      }
+      .qa-list {
+        max-height: 150px;
+        overflow-y: auto;
+        margin-bottom: 12px;
+        background: #1a1926;
+        border-radius: 8px;
+        border: 1px solid #44475a;
+      }
+      .qa-item {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        padding: 8px 12px;
+        border-bottom: 1px solid #282a36;
+      }
+      .qa-item:last-child { border-bottom: none; }
+      .qa-item-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+      .qa-item-text {
+        font-size: 13px;
+        color: #f8f8f2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+        margin-right: 8px;
+      }
+      .qa-item-alias-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      .qa-item-alias-label {
+        font-size: 11px;
+        color: #6272a4;
+        min-width: 44px;
+        user-select: none;
+      }
+      .qa-item-alias-input {
+        flex: 1;
+        background: #1a1926;
+        border: 1px solid #44475a;
+        color: #f8f8f2;
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-family: inherit;
+        font-size: 12px;
+        outline: none;
+      }
+      .qa-item-alias-input:focus {
+        border-color: #bd93f9;
+        box-shadow: 0 0 0 2px rgba(189, 147, 249, 0.15);
+      }
+      .qa-item-del {
+        background: #ff5555;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .qa-add-row {
+        display: flex;
+        gap: 8px;
+      }
+      .qa-input {
+        flex: 1;
+        background: #1a1926;
+        border: 1px solid #6272a4;
+        color: #f8f8f2;
+        border-radius: 6px;
+        padding: 8px;
+        font-family: inherit;
+        font-size: 13px;
+        outline: none;
+      }
+      .qa-input:focus { border-color: #bd93f9; }
+      .qa-add-btn {
+        background: #50fa7b;
+        color: #282a36;
+        border: none;
+        border-radius: 6px;
+        padding: 0 12px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+
+      .qa-manage-btn {
+        width: 100%;
+        margin-top: 8px;
+      }
+      .qa-manager-hint {
+        margin-top: 8px;
+        color: #6272a4;
+        font-size: 12px;
+        line-height: 1.3;
+      }
+
+      /* --- Quick Actions Editor Modal (Standalone Window) --- */
+      #qa-editor-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.75);
+        z-index: 2100;
+        display: none;
+        justify-content: center;
+        align-items: center;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+      #qa-editor-modal.visible {
+        display: flex !important;
+        opacity: 1 !important;
+      }
+      #qa-editor-modal .modal-content {
+        width: 92%;
+        max-width: 560px;
+      }
+      .qa-editor-list {
+        max-height: 240px;
+        overflow-y: auto;
+        background: #1a1926;
+        border-radius: 10px;
+        border: 1px solid #44475a;
+        padding: 8px;
+      }
+      .qa-edit-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 4px;
+        border-bottom: 1px solid #282a36;
+      }
+      .qa-edit-row:last-child { border-bottom: none; }
+      .qa-edit-cmd { flex: 1.2; min-width: 0; }
+      .qa-edit-alias { flex: 1; min-width: 0; }
+      .qa-edit-input {
+        width: 100%;
+        background: #1a1926;
+        border: 1px solid #44475a;
+        color: #f8f8f2;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-family: inherit;
+        font-size: 13px;
+        outline: none;
+      }
+      .qa-edit-input:focus {
+        border-color: #bd93f9;
+        box-shadow: 0 0 0 2px rgba(189, 147, 249, 0.15);
+      }
+      .qa-edit-del {
+        background: #ff5555;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 12px;
+        cursor: pointer;
+        flex: 0 0 auto;
+      }
+      .qa-edit-add-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .qa-edit-add-btn {
+        background: #50fa7b;
+        color: #282a36;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-weight: 700;
+        cursor: pointer;
+        flex: 0 0 auto;
+      }
+      .qa-editor-note {
+        margin-top: 10px;
+        color: #6272a4;
+        font-size: 12px;
+        line-height: 1.3;
+      }
+
+      .modal-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+      }
+      .btn {
+        flex: 1;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 14px;
+        transition: transform 0.1s, opacity 0.1s;
+      }
+      .btn:active { transform: scale(0.98); opacity: 0.9; }
+      .btn-primary {
+        background: #bd93f9; /* Dracula Purple */
+        color: #282a36;
+      }
+      .btn-secondary {
+        background: #44475a;
+        color: #f8f8f2;
+      }
+
+      /* Layout adjustment for both mobile and desktop */
+      #terminal-container {
+        bottom: 44px; /* Space for virtual keyboard */
+      }
+      .modal-content {
+        width: 90%;
+        max-width: 340px;
+        margin: 0 20px;
+      }
+
+      /* --- Desktop Mode Tweaks --- */
+      /* Hide regular virtual keys if width is large AND device supports hover, OR if device has a fine pointer (mouse) */
+      @media (hover: hover) and (min-width: 1024px), (pointer: fine) {
+        /* Hide regular virtual keys and Enter key */
+        .vk-keys-area, #vk-enter {
+          display: none !important;
+        }
+        /* Show PTT Hint on Desktop */
+        .desktop-ptt-hint {
+            display: flex !important;
+            align-items: center;
+            color: #6272a4;
+            font-size: 13px;
+            margin-left: auto; /* Push to right */
+            margin-right: 16px;
+            white-space: nowrap;
+            opacity: 0.8;
+            pointer-events: none; /* Let clicks pass through */
+        }
+        .desktop-ptt-hint kbd {
+            background: #44475a;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin: 0 4px;
+            font-family: inherit;
+            color: #f8f8f2;
+            border-bottom: 2px solid #282a36;
+        }
+
+        /* Keep drawer toggle and clear button visible */
+        .vk-tools-area {
+            display: flex;
+        }
+        /* Adjust container to just hold tools and PTT */
+        #virtual-keyboard {
+            justify-content: space-between;
+        }
+        .vk-scroll-container {
+            flex: 1; /* Allow it to grow to fill space */
+        }
+        /* Ensure the row inside expands to fill the container so margin-auto works */
+        .vk-scroll-container .vk-row {
+            width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Top Header -->
+    <div id="mobile-header">
+      <div class="header-title">
+        <div id="status-dot" class="status-indicator"></div>
+        <span>VoiceCode</span>
+        <span id="voice-model-status">—</span>
+      </div>
+      <div class="header-controls">
+        <button class="icon-btn" id="qr-btn" title="Share Session (QR Code)">📱</button>
+        <button class="icon-btn" id="new-session-btn" title="New Session">➕</button>
+        <button class="icon-btn" id="font-dec-btn" title="Decrease Font Size">A-</button>
+        <button class="icon-btn" id="font-inc-btn" title="Increase Font Size">A+</button>
+        <button class="icon-btn" id="settings-btn" title="Settings">⚙️</button>
+      </div>
+    </div>
+
+    <!-- Terminal Container -->
+    <div id="terminal-container">
+      <div id="terminal"></div>
+    </div>
+
+    <!-- Quick Actions Drawer -->
+    <div id="quick-actions">
+      <!-- Populated by JS -->
+    </div>
+
+    <!-- Recording Overlay -->
+    <div id="recording-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3000; align-items: center; justify-content: center; flex-direction: column;">
+        <div style="width: 80px; height: 80px; background: #ff5555; border-radius: 50%; display: flex; align-items: center; justify-content: center; animation: pulse 1.5s infinite;">
+            <span style="font-size: 40px;">🎤</span>
+        </div>
+        <div style="color: white; margin-top: 20px; font-weight: bold;">Recording...</div>
+    </div>
+    <style>
+      @keyframes pulse {
+        0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 85, 85, 0.7); }
+        70% { transform: scale(1.1); box-shadow: 0 0 0 20px rgba(255, 85, 85, 0); }
+        100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 85, 85, 0); }
+      }
+    </style>
+
+    <!-- QR Code Modal -->
+    <div id="qr-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; align-items: center; justify-content: center; flex-direction: column;">
+       <div style="background: white; padding: 20px; border-radius: 12px; text-align: center;">
+          <h3 style="margin-top: 0; color: #333;">Scan to Join</h3>
+          <img id="qr-image" src="" alt="QR Code" style="width: 200px; height: 200px; display: block; margin: 0 auto;">
+          <p style="color: #666; margin-bottom: 0; font-size: 14px;">Use your phone camera</p>
+       </div>
+       <button id="close-qr-btn" style="margin-top: 20px; background: transparent; border: 1px solid white; color: white; padding: 8px 16px; border-radius: 20px; font-size: 16px; cursor: pointer;">Close</button>
+    </div>
+
+    <!-- Virtual Keyboard -->
+    <div id="virtual-keyboard">
+      <div class="vk-scroll-container">
+        <div class="vk-row" id="vk-row-1">
+          <!-- Tools Area (Always visible or partially visible) -->
+          <div class="vk-tools-area" style="display: flex;">
+              <button class="vk-btn" id="vk-drawer" title="Quick Actions">⚡</button>
+              <button class="vk-btn" id="vk-ctrl-c" title="Interrupt (Ctrl+C)">^C</button>
+              <button class="vk-btn" id="clear-btn" title="Clear Scrollback">🗑️</button>
+          </div>
+
+          <!-- PTT Hint (Desktop Only) -->
+          <div class="desktop-ptt-hint" style="display: none;">
+             Hold <kbd>Middle Mouse</kbd> or <kbd>Right-Alt</kbd> to Speak
+          </div>
+          
+          <!-- Keys Area (Hidden on Desktop) -->
+          <div class="vk-keys-area" style="display: flex;">
+              <button class="vk-btn" id="vk-slash">/</button>
+              <button class="vk-btn" id="vk-tab">Tab</button>
+              <button class="vk-btn" id="vk-esc">Esc</button>
+              <button class="vk-btn" id="vk-backspace" title="Backspace">⌫</button>
+              <button class="vk-btn" id="vk-at">@</button>
+              <div class="vk-spacer"></div>
+              <button class="vk-btn" id="vk-left">←</button>
+              <button class="vk-btn" id="vk-down">↓</button>
+              <button class="vk-btn" id="vk-up">↑</button>
+              <button class="vk-btn" id="vk-right">→</button>
+              <div class="vk-spacer"></div>
+              <button class="vk-btn" id="vk-1">1</button>
+              <button class="vk-btn" id="vk-2">2</button>
+              <button class="vk-btn" id="vk-3">3</button>
+              <button class="vk-btn" id="vk-4">4</button>
+          </div>
+        </div>
+      </div>
+      <div class="vk-fixed-right">
+        <button class="vk-btn-fixed vk-btn-wide" id="ptt-btn" title="Push to Talk (Middle Mouse or Right-Alt)">🎤</button>
+        <button class="vk-btn-fixed vk-btn-wide" id="vk-enter" title="Enter">⏎</button>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <span>Settings</span>
+          <button id="close-modal-btn" class="close-icon" title="Close">&times;</button>
+        </div>
+        <div class="form-group">
+          <label for="modal-theme-select">Theme</label>
+          <select id="modal-theme-select">
+            <option value="" disabled selected>Loading...</option>
+          </select>
+        </div>
+
+        <div class="qa-manager">
+          <label style="display: block; margin-bottom: 8px; color: #bd93f9; font-size: 14px; font-weight: 500;">Quick Actions</label>
+          <button id="open-qa-editor-btn" class="btn btn-secondary qa-manage-btn">Manage Quick Actions</button>
+          <div class="qa-manager-hint">Commands sync across clients; aliases are local to this device.</div>
+        </div>
+
+        <div class="qa-manager">
+          <label style="display: block; margin-bottom: 8px; color: #bd93f9; font-size: 14px; font-weight: 500;">Voice Model Cache</label>
+          <button id="clear-voice-model-cache-btn" class="btn btn-secondary qa-manage-btn">Clear Voice Model Cache</button>
+          <div class="qa-manager-hint" id="voice-model-cache-hint">Clears cached SenseVoice model assets (onnx/tokens/mvn) stored on this device.</div>
+        </div>
+
+        <div class="modal-actions">
+          <button id="reset-settings-btn" class="btn btn-secondary">Reset</button>
+          <button id="apply-settings-btn" class="btn btn-primary">Apply</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions Editor Modal -->
+    <div id="qa-editor-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <span>Quick Actions</span>
+          <button id="close-qa-editor-btn" class="close-icon" title="Close">&times;</button>
+        </div>
+
+        <div id="qa-editor-list" class="qa-editor-list">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="qa-edit-add-row">
+          <div class="qa-edit-cmd">
+            <input type="text" id="qa-editor-new-cmd" class="qa-edit-input" placeholder="Command (e.g. /git status)">
+          </div>
+          <div class="qa-edit-alias">
+            <input type="text" id="qa-editor-new-alias" class="qa-edit-input" placeholder="Alias (comma-separated)">
+          </div>
+          <button id="qa-editor-add-btn" class="qa-edit-add-btn">Add</button>
+        </div>
+
+        <div class="qa-editor-note">Tip: Use aliases for voice input (e.g. “状态” → “/git status”).</div>
+      </div>
+    </div>
+
+    <!-- Third-party dependencies (xterm + onnxruntime) with multi-CDN fallback -->
+    <script src="/cdn-loader.js"></script>
+
+    <!-- App bootloader loads local JS using server-generated hashes -->
+    <script src="/boot.js"></script>
+  </body>
+</html>
