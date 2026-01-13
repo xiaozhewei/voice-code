@@ -1,144 +1,147 @@
 # VoiceCode
 
-VoiceCode 是一个“跨设备共享终端”的小工具：桌面端负责看输出/键盘编辑，手机端负责语音输入与快捷指令，两个端实时同步到同一个 PTY 会话。
+Chinese version: [README.zh-CN.md](README.zh-CN.md)
 
-## 安装（放最前）
+VoiceCode — share a terminal between desktop and mobile. Desktop shows output and allows keyboard editing; mobile provides voice input, quick actions, and direct command execution. Both connect to the same PTY session in real time.
 
-前置：已安装 Node.js。
+---
 
-### 方式 A：直接运行（推荐）
+## Installation (top)
+
+Prerequisite: Node.js installed.
+
+Recommended — run instantly with npx:
 
 ```bash
 npx voicecode
 ```
 
-### 方式 B：全局安装（获得 `voicecode` 命令）
+Install globally to get the `voicecode` CLI:
 
 ```bash
 npm install -g voicecode
 voicecode
 ```
 
-### 方式 C：从源码运行（开发/二次修改）
+From source (development):
 
 ```bash
 npm install
 npm start
 ```
 
-服务默认启动在 `https://localhost:3000`（HTTPS + 自签名证书）。首次打开浏览器会提示证书风险，需要手动“继续访问/信任”。
+The server runs by default at `https://localhost:3000` (HTTPS with a self-signed certificate). Your browser will warn about the certificate the first time — allow/continue to proceed.
 
-## 快速开始（3 步）
+---
 
-1) 启动服务
+## Quick Start (3 steps)
+
+1) Start the server:
 
 ```bash
 voicecode
-# 或：npm start
+# or: npm start
 ```
 
-2) 桌面端打开终端页面
+2) Open the desktop terminal page:
 
-- 打开 `https://localhost:3000`（或启动日志里显示的 Network 地址）
+- Visit `https://localhost:3000` (or the network address shown in the server log).
 
-3) 手机端用二维码加入同一个会话
+3) Join from your phone via QR code:
 
-- 在页面点击“二维码”按钮生成二维码
-- 手机扫码后会打开同一个会话 URL（形如 `https://<ip>:3000/<sessionId>`），手机端就能作为语音遥控/快捷命令面板
+- Click the QR button on the page to generate a code. Scan it with your phone to open the same session URL (like `https://<ip>:3000/<sessionId>`). Your phone becomes a voice/quick-action remote.
 
-提示：手机与电脑需在同一局域网，且必须是 HTTPS（浏览器对麦克风权限的要求）。
+Tip: Your phone and computer should be on the same LAN, and you must use HTTPS for microphone permissions in the browser.
 
-## 语音功能
+---
 
-VoiceCode 的语音识别在浏览器端完成：使用 SenseVoiceSmall（ONNX）模型，优先在 Web Worker 里推理，减少卡顿；首次使用需要加载模型，之后会受浏览器缓存加速。
+## Voice Features
 
-### 1) 按住说话（PTT）
+Voice recognition runs locally in the browser using the SenseVoiceSmall (ONNX) model. The app prefers running inference inside a Web Worker to keep the UI responsive; the first run downloads the model (cached by the browser afterwards).
 
-- 手机端：按住页面上的麦克风按钮开始录音，松开后自动转写
-- 桌面端也支持 PTT：
-   - 右侧 Alt（`AltRight`）按住录音，松开结束
-   - 鼠标中键按住录音，松开结束
+Key modes:
 
-录音时页面会显示录音遮罩层；如果误触，点遮罩层也能强制停止。
+- Push-to-talk (PTT): press and hold the mic button on mobile (or AltRight / middle mouse on desktop) to record; release to transcribe.
+- Direct command execution: utterances starting with `/` are sent immediately to the backend PTY with an automatic Enter. The system also supports intelligent matching and alias-triggered commands (say “help” or a custom alias and it runs `/help`).
+- Dictation mode: non-command transcriptions are appended to the current terminal input without auto-Enter so you can edit before running.
 
-### 2) “直接呼叫命令”（说出来就执行）
+Model & troubleshooting:
 
-转写出来的内容会走两种路径：
+- The page will try to warm the model proactively to avoid long first-press latency.
+- Settings include a “clear voice model cache” control (refresh required after clearing).
+- If the browser reports no microphone or permission denied, ensure you’re on HTTPS and that microphone access is granted.
 
-1. **命令模式（立即执行）**：如果识别结果是以 `/` 开头的命令（例如 `/help`），会立刻发送到后端 PTY 并自动回车执行。
-2. **智能匹配（说 help 也能执行 /help）**：如果你说了 `help`，而快捷抽屉里正好有 `/help`，系统会自动把它纠正为 `/help` 并立即执行。
-3. **别名匹配（自定义口令）**：你可以给某个命令设置“别名”。例如把 `/help` 的别名设为“帮助”，当你说“帮助”时会直接执行 `/help`。
+---
 
-### 3) 口述输入（不自动回车，便于你编辑）
+## QR Code (user-friendly)
 
-如果识别到的文本**不是** slash 命令，也没有匹配到快捷命令，它会被当作“口述输入”追加到当前终端输入行，但**不会自动回车**。你可以继续用键盘补全/编辑，然后手动回车执行。
+Tap the QR button on the page to generate a scannable image. Scanning opens the same session URL in your phone browser so you can join quickly.
 
-### 4) 语音模型缓存与排障
+If your phone and computer are on the same LAN the QR will prefer a LAN address; if you enabled the tunnel/public access option, the QR will encode the public URL instead for remote scanning.
 
-- VoiceCode 会在空闲时尝试预热模型（减少第一次按下 PTT 的等待）
-- 设置里提供“清理语音模型缓存”的入口（清理后需要刷新页面重新拉取模型）
-- 如果手机浏览器一直提示无麦克风权限/无法录音：优先检查是否通过 HTTPS 访问
+You can also create a new session with the “New Session” button and get its QR code.
 
-## 二维码功能
+---
 
-点击页面上的“二维码”按钮会弹出一个可直接扫码的图片。用手机扫一扫即可在手机浏览器里打开与桌面相同的会话页面，马上加入当前终端。
+## Other Core Features
 
-小提示：如果手机和电脑在同一个局域网，二维码会优先使用局域网地址；如果你开启了「隧道/公网访问」，二维码会改为公网链接，方便远程扫码。
+- Multi-device, real-time sync to the same PTY session.
+- Quick Actions drawer: send common commands with one tap; supports edit, rename, and aliases for voice triggers.
+- Optional automatic AI CLI startup (e.g., `gemini` or `claude`).
 
-也可以点击“新会话”按钮打开一个新的会话并为其生成二维码。
+---
 
-## 其它核心特性
+## Advanced / Optional
 
-- **多端实时同步**：同一个 PTY 会话可同时连接桌面与手机
-- **快速操作抽屉（Quick Actions）**：一键发送常用命令；支持编辑、重命名与为命令设置别名（用于语音“直接呼叫命令”）
-- **自动启动 AI CLI**：支持启动时自动输入 `gemini` 或 `claude`
+1) Tunnel / Public Access
 
-## 高级用法
+If you don’t want to deal with self-signed certs or your devices aren’t on the same LAN, use the built-in ngrok tunnel:
 
-### 1) 内网穿透 / 公网访问（解决证书与异地连接）
+Windows (example):
 
-如果不在同一局域网、或不想处理自签名证书，建议使用内置 ngrok 隧道：
-
-```bash
-set NGROK_AUTHTOKEN=你的token
+```powershell
+setx NGROK_AUTHTOKEN "<your-token>"
 voicecode --tunnel
 ```
 
-或从源码：
+Or from source:
 
 ```bash
 npm run start:tunnel
 ```
 
-开启后，二维码会优先编码公网 HTTPS 地址。
+When enabled, QR codes will use the public HTTPS address.
 
-### 2) 启动时自动运行 AI CLI
+2) Auto-start AI CLI
 
 ```bash
 voicecode --gemini
 voicecode --claude
+# or from source: node server.js --gemini
 ```
 
-（从源码同样支持：`node server.js --gemini` / `node server.js --claude`）
+---
 
-## 常见问题
+## Troubleshooting
 
-**Q：手机扫码能打开页面，但语音按钮不可用？**
+Q: I can open the page on my phone but the voice button is disabled.
 
-A：浏览器通常要求“HTTPS + 用户手势”才能启用麦克风。请确认你是通过 `https://...` 访问，并允许麦克风权限。
+A: Most browsers require HTTPS and a user gesture for microphone access. Ensure you opened the page at `https://...` and granted microphone permission.
 
-**Q：第一次语音很慢？**
+Q: First voice use is slow.
 
-A：首次需要加载语音模型；后续会利用缓存加速。也可在设置中清理语音模型缓存后刷新重试。
+A: The model must be downloaded on first use; subsequent runs use the cached model. You can clear the model cache in Settings and reload the page to force a fresh download.
 
-**Q：Windows 下终端启动失败/权限问题？**
+Q: Terminal fails to start on Windows / permissions issues?
 
-A：可尝试运行修复脚本：
+A: Run the repair script:
 
 ```bash
 node scripts/fix-node-pty-perms.js
 ```
 
-## 许可证
+---
+
+## License
 
 ISC
