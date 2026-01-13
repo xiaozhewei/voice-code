@@ -1,102 +1,140 @@
 # VoiceCode
 
-VoiceCode 是一个无缝跨设备的共享终端工具，专为 AI 命令行交互（如 Gemini CLI 和 Claude Code）优化。它允许你通过手机浏览器使用语音输入指令，同时在桌面浏览器上使用键盘操作，所有状态在多端实时同步。
+VoiceCode 是一个“跨设备共享终端”的小工具：桌面端负责看输出/键盘编辑，手机端负责语音输入与快捷指令，两个端实时同步到同一个 PTY 会话。
 
-## 核心特性
+## 安装（放最前）
 
-- **📱 混合输入模式**：结合手机端的移动便捷性（语音输入）与桌面端的精准性（键盘输入）。
-- **🔒 本地隐私保护**：集成 [SenseVoiceSmall-browser](https://github.com/guoguo111/SenseVoiceSmall-browser) 模型，在浏览器本地进行中英文语音识别，无需上传云端。
-- **⚡ 实时同步**：基于 WebSocket 实现多端终端会话共享，你在手机说的话，桌面端立即执行。
-- **🚀 快速操作 (Quick Actions)**：手机端提供智能命令抽屉，自动记录常用指令，一键发送。
+前置：已安装 Node.js。
 
-## 快速开始
+### 方式 A：直接运行（推荐）
 
-### 1. 安装依赖
+```bash
+npx voicecode
+```
 
-确保你已经安装了 Node.js 环境。
+### 方式 B：全局安装（获得 `voicecode` 命令）
+
+```bash
+npm install -g voicecode
+voicecode
+```
+
+### 方式 C：从源码运行（开发/二次修改）
 
 ```bash
 npm install
-```
-
-### 2. 启动服务
-
-**默认启动（仅本地网络）：**
-
-```bash
 npm start
 ```
-服务默认运行在 `https://localhost:3000`。
-*注意：由于使用自签名证书，浏览器可能会提示不安全，请选择“继续访问”或“信任此网站”。*
 
-### 3. 连接设备
+服务默认启动在 `https://localhost:3000`（HTTPS + 自签名证书）。首次打开浏览器会提示证书风险，需要手动“继续访问/信任”。
 
-启动后，控制台会显示一个 **二维码**。
-1. **桌面端**：在浏览器打开 `https://localhost:3000`。
-2. **移动端**：确保手机和电脑在同一局域网，扫描二维码打开页面。
-   - *iOS/Android 注意*：由于浏览器安全限制，语音识别功能必须在 HTTPS 环境下运行。
+## 快速开始（3 步）
 
----
+1) 启动服务
+
+```bash
+voicecode
+# 或：npm start
+```
+
+2) 桌面端打开终端页面
+
+- 打开 `https://localhost:3000`（或启动日志里显示的 Network 地址）
+
+3) 手机端用二维码加入同一个会话
+
+- 在页面点击“二维码”按钮生成二维码
+- 手机扫码后会打开同一个会话 URL（形如 `https://<ip>:3000/<sessionId>`），手机端就能作为语音遥控/快捷命令面板
+
+提示：手机与电脑需在同一局域网，且必须是 HTTPS（浏览器对麦克风权限的要求）。
+
+## 语音功能
+
+VoiceCode 的语音识别在浏览器端完成：使用 SenseVoiceSmall（ONNX）模型，优先在 Web Worker 里推理，减少卡顿；首次使用需要加载模型，之后会受浏览器缓存加速。
+
+### 1) 按住说话（PTT）
+
+- 手机端：按住页面上的麦克风按钮开始录音，松开后自动转写
+- 桌面端也支持 PTT：
+   - 右侧 Alt（`AltRight`）按住录音，松开结束
+   - 鼠标中键按住录音，松开结束
+
+录音时页面会显示录音遮罩层；如果误触，点遮罩层也能强制停止。
+
+### 2) “直接呼叫命令”（说出来就执行）
+
+转写出来的内容会走两种路径：
+
+1. **命令模式（立即执行）**：如果识别结果是以 `/` 开头的命令（例如 `/help`），会立刻发送到后端 PTY 并自动回车执行。
+2. **智能匹配（说 help 也能执行 /help）**：如果你说了 `help`，而快捷抽屉里正好有 `/help`，系统会自动把它纠正为 `/help` 并立即执行。
+3. **别名匹配（自定义口令）**：你可以给某个命令设置“别名”。例如把 `/help` 的别名设为“帮助”，当你说“帮助”时会直接执行 `/help`。
+
+### 3) 口述输入（不自动回车，便于你编辑）
+
+如果识别到的文本**不是** slash 命令，也没有匹配到快捷命令，它会被当作“口述输入”追加到当前终端输入行，但**不会自动回车**。你可以继续用键盘补全/编辑，然后手动回车执行。
+
+### 4) 语音模型缓存与排障
+
+- VoiceCode 会在空闲时尝试预热模型（减少第一次按下 PTT 的等待）
+- 设置里提供“清理语音模型缓存”的入口（清理后需要刷新页面重新拉取模型）
+- 如果手机浏览器一直提示无麦克风权限/无法录音：优先检查是否通过 HTTPS 访问
+
+## 二维码功能
+
+点击页面上的“二维码”按钮会弹出一个可直接扫码的图片。用手机扫一扫即可在手机浏览器里打开与桌面相同的会话页面，马上加入当前终端。
+
+小提示：如果手机和电脑在同一个局域网，二维码会优先使用局域网地址；如果你开启了「隧道/公网访问」，二维码会改为公网链接，方便远程扫码。
+
+也可以点击“新会话”按钮打开一个新的会话并为其生成二维码。
+
+## 其它核心特性
+
+- **多端实时同步**：同一个 PTY 会话可同时连接桌面与手机
+- **快速操作抽屉（Quick Actions）**：一键发送常用命令；支持编辑、重命名与为命令设置别名（用于语音“直接呼叫命令”）
+- **自动启动 AI CLI**：支持启动时自动输入 `gemini` 或 `claude`
 
 ## 高级用法
 
-### 🌐 内网穿透 (公网访问)
+### 1) 内网穿透 / 公网访问（解决证书与异地连接）
 
-如果你希望在非局域网环境下连接，或者解决局域网 HTTPS 证书问题，可以使用内置的 ngrok 隧道功能。
+如果不在同一局域网、或不想处理自签名证书，建议使用内置 ngrok 隧道：
 
-**前置条件**：
-你需要一个 ngrok 的 Authtoken。请访问 [ngrok dashboard](https://dashboard.ngrok.com/get-started/your-authtoken) 获取。
-
-**设置 Token 并启动：**
-
-Windows (CMD):
-```cmd
+```bash
 set NGROK_AUTHTOKEN=你的token
+voicecode --tunnel
+```
+
+或从源码：
+
+```bash
 npm run start:tunnel
 ```
 
-Mac/Linux:
+开启后，二维码会优先编码公网 HTTPS 地址。
+
+### 2) 启动时自动运行 AI CLI
+
 ```bash
-export NGROK_AUTHTOKEN=你的token
-npm run start:tunnel
+voicecode --gemini
+voicecode --claude
 ```
 
-启动后，控制台会生成一个公网 HTTPS 链接和对应的二维码，手机直接扫描即可安全访问。
-
-### 🤖 自动启动 AI CLI
-
-你可以让 VoiceCode 在启动时直接运行特定的 AI 助手，方便直接开始对话。
-
-**启动 Gemini CLI:**
-```bash
-npm run start:gemini
-# 或
-node server.js --gemini
-```
-
-**启动 Claude Code:**
-```bash
-npm run start:claude
-# 或
-node server.js --claude
-```
-
-## 手机端操作指南
-
-1. **授权麦克风**：首次打开需允许浏览器访问麦克风权限。
-2. **按住说话 (PTT)**：长按屏幕下方的麦克风按钮说话，松开后自动发送指令到终端。
-3. **快速指令**：上滑底部的“快速操作”抽屉，点击常用命令直接发送。
+（从源码同样支持：`node server.js --gemini` / `node server.js --claude`）
 
 ## 常见问题
 
-**Q: 手机浏览器提示连接不安全？**
-A: 这是因为本地服务使用的是自签名 SSL 证书。建议使用 `npm run start:tunnel` 模式，通过 ngrok 提供的合规 HTTPS 链接访问，体验最好。
+**Q：手机扫码能打开页面，但语音按钮不可用？**
 
-**Q: 语音识别速度慢？**
-A: 语音识别模型完全在手机浏览器本地运行。首次加载模型可能需要几秒钟，之后的识别速度取决于手机处理器的性能。
+A：浏览器通常要求“HTTPS + 用户手势”才能启用麦克风。请确认你是通过 `https://...` 访问，并允许麦克风权限。
 
-**Q: 如何在 Windows 上修复 node-pty 权限问题？**
-A: 如果遇到终端启动错误，尝试运行修复脚本：
+**Q：第一次语音很慢？**
+
+A：首次需要加载语音模型；后续会利用缓存加速。也可在设置中清理语音模型缓存后刷新重试。
+
+**Q：Windows 下终端启动失败/权限问题？**
+
+A：可尝试运行修复脚本：
+
 ```bash
 node scripts/fix-node-pty-perms.js
 ```
@@ -104,62 +142,3 @@ node scripts/fix-node-pty-perms.js
 ## 许可证
 
 ISC
-
-## 安装与发布（npm）
-
-### 从 npm 安装（用户）
-
-作为项目依赖：
-
-```bash
-npm install voicecode
-```
-
-全局安装（提供 `voicecode` 命令）：
-
-```bash
-npm install -g voicecode
-# 然后运行：
-voicecode
-```
-
-使用 npx（无需全局安装）：
-
-```bash
-npx voicecode
-```
-
-### 发布到 npm（维护者）
-
-本地交互式发布：
-
-```bash
-npm login
-npm publish --access public
-```
-
-使用 CI/Automation Token（推荐自动化发布）：
-
-1. 在 https://www.npmjs.com/ -> Access Tokens 创建一个 **Automation** token，并勾选 **Bypass two-factor authentication**（如果你的账号启用了 2FA）。
-2. 在 CI 环境中设置环境变量 `NPM_TOKEN`（不要把 token 明文写入仓库）。
-3. 在仓库根目录创建或使用临时 `.npmrc`：
-
-```text
-//registry.npmjs.org/:_authToken=${NPM_TOKEN}
-```
-
-4. 在 CI 中执行：
-
-```bash
-npm ci
-npm publish --access public
-```
-
-提示：发布前请确保 `package.json` 的 `version` 已正确更新（如使用 `npm version patch`），并在发布后为该版本打 tag 并推送：
-
-```bash
-npm version patch -m "chore(release): %s"
-git push origin --follow-tags
-```
-
-安全提示：生成的 `Automation` token 能直接发布包，请妥善保管并仅在受信任的 CI 中使用。
