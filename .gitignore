@@ -15,5 +15,4 @@ coverage/
 .idea/
 .vscode/
 *.log
-package-lock.json
 public/assets-manifest.json
